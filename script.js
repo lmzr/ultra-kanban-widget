@@ -767,6 +767,27 @@ document.addEventListener('DOMContentLoaded', function () {
 
     const pal = ["#1E88E5", "#43A047", "#FB8C00", "#E53935", "#8E24AA", "#00838F", "#6D4C41", "#546E7A"];
     const palette = i => pal[i % pal.length];
+
+    /**
+     * Returns contrasting text color (black or white) based on background luminance.
+     * Uses WCAG 2.0 relative luminance formula.
+     * @param {string} hexColor - Background color in hex format (#RRGGBB or #RGB)
+     * @returns {string} '#000000' for light backgrounds, '#ffffff' for dark backgrounds
+     */
+    function getContrastColor(hexColor) {
+        if (!hexColor) return '#ffffff';
+        let hex = hexColor.replace('#', '');
+        // Handle shorthand hex (#RGB)
+        if (hex.length === 3) {
+            hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
+        }
+        const r = parseInt(hex.substr(0, 2), 16) / 255;
+        const g = parseInt(hex.substr(2, 2), 16) / 255;
+        const b = parseInt(hex.substr(4, 2), 16) / 255;
+        // WCAG 2.0 relative luminance
+        const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+        return luminance > 0.5 ? '#000000' : '#ffffff';
+    }
     const dbg = document.getElementById('dbg');
     const boardEl = document.getElementById('board');
     const errEl = document.getElementById('errorMsg');
@@ -1087,7 +1108,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 else if (colDef.type === 'Date' || colDef.type === 'DateTime') { displayValue = formatEpoch(rawValueFromGrist, colDef.type); }
                 
                 if (colDef.type === 'Bool') { fieldEl = document.createElement('input'); fieldEl.type = 'checkbox'; fieldEl.disabled = true; fieldEl.checked = Boolean(rawValueFromGrist); }
-                else if (colDef.type === 'ChoiceList') { fieldEl = document.createElement('div'); const choicesSelected = Array.isArray(rawValueFromGrist) && rawValueFromGrist[0] === 'L' ? rawValueFromGrist.slice(1) : []; if (choicesSelected.length > 0) { choicesSelected.forEach(opt => { const chip = document.createElement('span'); chip.className = 'choice-chip'; chip.textContent = opt; if (item.config.useFormatting && colDef.widgetOptions?.choiceOptions?.[opt]) { const cs = colDef.widgetOptions.choiceOptions[opt]; if (cs.fillColor) chip.style.backgroundColor = cs.fillColor; if (cs.textColor) chip.style.color = cs.textColor; } fieldEl.appendChild(chip); }); } else { fieldEl.textContent = `[${_('none')}]`; fieldEl.style.fontStyle = 'italic'; fieldEl.style.color = '#757575'; } }
+                else if (colDef.type === 'ChoiceList') { fieldEl = document.createElement('div'); const choicesSelected = Array.isArray(rawValueFromGrist) && rawValueFromGrist[0] === 'L' ? rawValueFromGrist.slice(1) : []; if (choicesSelected.length > 0) { choicesSelected.forEach(opt => { const chip = document.createElement('span'); chip.className = 'choice-chip'; chip.textContent = opt; if (item.config.useFormatting && colDef.widgetOptions?.choiceOptions?.[opt]) { const cs = colDef.widgetOptions.choiceOptions[opt]; if (cs.fillColor) chip.style.backgroundColor = cs.fillColor; if (cs.textColor) chip.style.color = cs.textColor; else if (cs.fillColor) chip.style.color = getContrastColor(cs.fillColor); } fieldEl.appendChild(chip); }); } else { fieldEl.textContent = `[${_('none')}]`; fieldEl.style.fontStyle = 'italic'; fieldEl.style.color = '#757575'; } }
                 else { fieldEl = document.createElement('span'); fieldEl.className = 'value'; fieldEl.textContent = displayValue ?? ''; if (displayValue === `[${_('none')}]`) { fieldEl.style.fontStyle = 'italic'; fieldEl.style.color = '#757575'; } }
                 if (item.config.useFormatting && colDef.type !== 'ChoiceList') { applyStylesFromWidgetOptions(fieldEl, colDef, rawValueFromGrist, false); }
             }
@@ -1162,7 +1183,7 @@ document.addEventListener('DOMContentLoaded', function () {
             else if (col.type === 'Date' || col.type === 'DateTime') { displayValueForReadonly = formatEpoch(val, col.type); }
             if (!cfg.editable || col.isFormula || col.id === WidgetConfigManager.getKanbanDefiningColumn()) {
                 inputEl = document.createElement('div'); inputEl.className = 'readonly-field';
-                if (col.type === 'ChoiceList') { const choices = Array.isArray(val) && val[0] === 'L' ? val.slice(1) : []; if(choices.length > 0) { choices.forEach(opt => { const chip = document.createElement('span'); chip.className = 'choice-chip'; chip.textContent = opt; if (col.widgetOptions?.choiceOptions?.[opt]) { const cs = col.widgetOptions.choiceOptions[opt]; if (cs.fillColor) chip.style.backgroundColor = cs.fillColor; if (cs.textColor) chip.style.color = cs.textColor; } inputEl.appendChild(chip); }); } else { inputEl.textContent = `[${_('none')}]`; inputEl.style.fontStyle="italic"; inputEl.style.color="#777";} }
+                if (col.type === 'ChoiceList') { const choices = Array.isArray(val) && val[0] === 'L' ? val.slice(1) : []; if(choices.length > 0) { choices.forEach(opt => { const chip = document.createElement('span'); chip.className = 'choice-chip'; chip.textContent = opt; if (col.widgetOptions?.choiceOptions?.[opt]) { const cs = col.widgetOptions.choiceOptions[opt]; if (cs.fillColor) chip.style.backgroundColor = cs.fillColor; if (cs.textColor) chip.style.color = cs.textColor; else if (cs.fillColor) chip.style.color = getContrastColor(cs.fillColor); } inputEl.appendChild(chip); }); } else { inputEl.textContent = `[${_('none')}]`; inputEl.style.fontStyle="italic"; inputEl.style.color="#777";} }
                 else if (col.type === 'Bool') { inputEl.textContent = Boolean(val) ? _('yes') : _('no'); }
                 else if (col.type.startsWith('Ref')) { inputEl.textContent = displayValueForReadonly; if (displayValueForReadonly === `[${_('none')}]` || String(displayValueForReadonly).startsWith("[Ref ID:")) { inputEl.style.color = '#757575'; inputEl.style.fontStyle = 'italic'; } }
                 else { inputEl.textContent = displayValueForReadonly ?? ''; }
@@ -1285,17 +1306,19 @@ document.addEventListener('DOMContentLoaded', function () {
                         }); 
                         orderedLaneValues = Array.from(uniqueValuesFromData).sort(); 
                     } 
-                    kanbanLanesStructure = orderedLaneValues.map((valStr, index) => { 
-                        let laneColor = palette(index); 
-                        let laneTextColor = '#fff'; 
-                        let fontBold = false; 
-                        if (definingColMeta.widgetOptions?.choiceOptions?.[valStr]) { 
-                            const co = definingColMeta.widgetOptions.choiceOptions[valStr]; 
-                            if (co.fillColor) laneColor = co.fillColor; 
-                            if (co.textColor) laneTextColor = co.textColor; 
-                            if (co.fontBold) fontBold = co.fontBold; 
-                        } 
-                        return { value: valStr, color: laneColor, textColor: laneTextColor, fontBold: fontBold, isUnmatched: false }; 
+                    kanbanLanesStructure = orderedLaneValues.map((valStr, index) => {
+                        let laneColor = palette(index);
+                        let laneTextColor = null;
+                        let fontBold = false;
+                        if (definingColMeta.widgetOptions?.choiceOptions?.[valStr]) {
+                            const co = definingColMeta.widgetOptions.choiceOptions[valStr];
+                            if (co.fillColor) laneColor = co.fillColor;
+                            if (co.textColor) laneTextColor = co.textColor;
+                            if (co.fontBold) fontBold = co.fontBold;
+                        }
+                        // Use Grist's textColor if provided, otherwise calculate contrast
+                        if (!laneTextColor) laneTextColor = getContrastColor(laneColor);
+                        return { value: valStr, color: laneColor, textColor: laneTextColor, fontBold: fontBold, isUnmatched: false };
                     }); 
                 } 
             } 
@@ -1356,8 +1379,11 @@ document.addEventListener('DOMContentLoaded', function () {
                 
                 const uniqueLaneValues = [...new Set(orderedLaneValues)];
                 uniqueLaneValues.forEach((laneValueStr, index) => {
-                    let laneColor = palette(index); let laneTextColor = '#fff'; let fontBold = false;
-                    if (definingColMeta.widgetOptions?.choiceOptions?.[laneValueStr]) { const co = definingColMeta.widgetOptions.choiceOptions[laneValueStr]; if (co.fillColor) laneColor = co.fillColor; if (co.textColor) laneTextColor = co.textColor; if (co.fontBold) fontBold = co.fontBold; }
+                    let laneColor = palette(index); let laneTextColor = null; let fontBold = false;
+                    const co = definingColMeta.widgetOptions?.choiceOptions?.[laneValueStr];
+                    if (co) { if (co.fillColor) laneColor = co.fillColor; if (co.textColor) laneTextColor = co.textColor; if (co.fontBold) fontBold = co.fontBold; }
+                    // Use Grist's textColor if provided, otherwise calculate contrast
+                    if (!laneTextColor) laneTextColor = getContrastColor(laneColor);
                     kanbanLanesStructure.push({ value: String(laneValueStr), color: laneColor, textColor: laneTextColor, fontBold: fontBold, isUnmatched: false });
                 });
                 if (kanbanLanesStructure.length === 0 && definingColMeta) { if(errEl) errEl.textContent = _('error_no_choices_defined').replace('{column}', definingColMeta.label).replace('{columnId}', definingColId); }
